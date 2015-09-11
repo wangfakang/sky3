@@ -1,0 +1,216 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Sky3 by wangfakang</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/github-light.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1 class="header">Sky3</h1>
+        <p class="header">nginx的ngx_http_upstream_check_module的解析</p>
+
+        <ul>
+          <li class="download"><a class="buttons" href="https://github.com/wangfakang/sky3/zipball/master">Download ZIP</a></li>
+          <li class="download"><a class="buttons" href="https://github.com/wangfakang/sky3/tarball/master">Download TAR</a></li>
+          <li><a class="buttons github" href="https://github.com/wangfakang/sky3">View On GitHub</a></li>
+        </ul>
+
+        <p class="header">This project is maintained by <a class="header name" href="https://github.com/wangfakang">wangfakang</a></p>
+
+
+      </header>
+      <section>
+        <p><code>对NGX_HTTP_UPSTREAM_DYNAMIC_MODULE的分析：
+</code></p>
+
+<h1>
+<a id="内容" class="anchor" href="#%E5%86%85%E5%AE%B9" aria-hidden="true"><span class="octicon octicon-link"></span></a>内容：</h1>
+
+<h2>
+<a id="一配置说明" class="anchor" href="#%E4%B8%80%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E" aria-hidden="true"><span class="octicon octicon-link"></span></a>一：配置说明</h2>
+
+<h2>
+<a id="二代码解析" class="anchor" href="#%E4%BA%8C%E4%BB%A3%E7%A0%81%E8%A7%A3%E6%9E%90" aria-hidden="true"><span class="octicon octicon-link"></span></a>二：代码解析</h2>
+
+<h2>
+<a id="三总结注意点" class="anchor" href="#%E4%B8%89%E6%80%BB%E7%BB%93%E6%B3%A8%E6%84%8F%E7%82%B9" aria-hidden="true"><span class="octicon octicon-link"></span></a>三：总结注意点</h2>
+
+<h3>
+<a id="一配置说明-1" class="anchor" href="#%E4%B8%80%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E-1" aria-hidden="true"><span class="octicon octicon-link"></span></a>一：配置说明</h3>
+
+<div class="highlight highlight-nginx"><pre><span class="pl-k">http</span> {
+    <span class="pl-k">lua_package_path</span> <span class="pl-s">"/path/to/lua-resty-upstream-healthcheck/lib/?.lua;;"</span>;
+
+    <span class="pl-c"># sample upstream block:</span>
+    <span class="pl-k">upstream</span> <span class="pl-en">foo.com </span>{
+        <span class="pl-k">server</span> 127.0.0.1:12354;
+        <span class="pl-k">server</span> 127.0.0.1:12355;
+        <span class="pl-k">server</span> 127.0.0.1:12356 backup;
+    }   
+
+    <span class="pl-c"># the size depends on the number of servers in upstream {}: </span>
+    <span class="pl-k">lua_shared_dict</span> healthcheck <span class="pl-c1">1m</span>; 
+
+    <span class="pl-k">lua_socket_log_errors</span> off;
+
+    <span class="pl-k">init_worker_by_lua</span> <span class="pl-s">'</span>
+<span class="pl-s">        local hc = require "resty.upstream.healthcheck"</span>
+<span class="pl-s"></span>
+<span class="pl-s">        local ok, err = hc.spawn_checker{</span>
+<span class="pl-s">            shm = "healthcheck",  -- defined by "lua_shared_dict"</span>
+<span class="pl-s">            upstream = "foo.com", -- defined by "upstream"</span>
+<span class="pl-s">            type = "http",</span>
+<span class="pl-s"></span>
+<span class="pl-s">            -- if you put this Lua snippet in separate .lua file,</span>
+<span class="pl-s">            -- then you should write this instead: http_req = "GET /status HTTP/1.0\r\nHost: foo.com\r\n\r\n",</span>
+<span class="pl-s">            http_req = "GET /status HTTP/1.0\\r\\nHost: foo.com\\r\\n\\r\\n",</span>
+<span class="pl-s">                    -- raw HTTP request for checking</span>
+<span class="pl-s"></span>
+<span class="pl-s">            interval = 2000,  -- run the check cycle every 2 sec</span>
+<span class="pl-s">            timeout = 1000,   -- 1 sec is the timeout for network operations</span>
+<span class="pl-s">            fall = 3,  -- # of successive failures before turning a peer down</span>
+<span class="pl-s">            rise = 2,  -- # of successive successes before turning a peer up</span>
+<span class="pl-s">            valid_statuses = {200, 302},  -- a list valid HTTP status code</span>
+<span class="pl-s">            concurrency = 10,  -- concurrency level for test requests</span>
+<span class="pl-s">        }</span>
+<span class="pl-s">        if not ok then</span>
+<span class="pl-s">            ngx.log(ngx.ERR, "failed to spawn health checker: ", err)</span>
+<span class="pl-s">            return</span>
+<span class="pl-s">        end</span>
+<span class="pl-s"></span>
+<span class="pl-s">        -- Just call hc.spawn_checker() for more times here if you have</span>
+<span class="pl-s">        -- more upstream groups to monitor. One call for one upstream group.</span>
+<span class="pl-s">        -- They can all share the same shm zone without conflicts but they</span>
+<span class="pl-s">        -- need a bigger shm zone for obvious reasons.</span>
+<span class="pl-s">    '</span>;
+
+    <span class="pl-k">server</span> {
+        ...
+
+        <span class="pl-c"># status page for all the peers:</span>
+        <span class="pl-k">location</span> <span class="pl-en">= /status </span>{
+            <span class="pl-k">access_log</span><span class="pl-c1"> off</span>;
+            <span class="pl-k">allow</span> <span class="pl-s">127.0.0.1</span>;
+            <span class="pl-k">deny</span><span class="pl-c1"> all</span>;
+
+            <span class="pl-k">default_type</span> text/plain;
+            <span class="pl-k">content_by_lua</span> <span class="pl-s">'</span>
+<span class="pl-s">                local hc = require "resty.upstream.healthcheck"</span>
+<span class="pl-s">                ngx.say("Nginx Worker PID: ", ngx.worker.pid())</span>
+<span class="pl-s">                ngx.print(hc.status_page())</span>
+<span class="pl-s">            '</span>;
+        }
+    }
+}</pre></div>
+
+<p>上面的配置就启用了upstream的健康检查。</p>
+
+<pre><code>注意此模块是agentzh使用nxg_http_lua_upstream_module中的set_peer_down来实现的健康检查.和tengine实现的是不一样的.
+</code></pre>
+
+<h1>
+<a id="细节注意点-" class="anchor" href="#%E7%BB%86%E8%8A%82%E6%B3%A8%E6%84%8F%E7%82%B9-" aria-hidden="true"><span class="octicon octicon-link"></span></a>细节注意点： </h1>
+
+<ul>
+<li>1.使用nxg_http_lua_upstream_module模块的set_peer_down进行修改的时候，只是对当前work进程生效，但是对于其他的work进程是没有作用的。
+agentzh解决方法：</li>
+<li>2.使用share_dict，在init_work_by_lua阶段为每一个work进程进行设置回调函数定时的去访问share_dict相应的数据进行相应的更新。</li>
+</ul>
+
+<h1>
+<a id="基本原理--" class="anchor" href="#%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86--" aria-hidden="true"><span class="octicon octicon-link"></span></a>基本原理：  </h1>
+
+<ul>
+<li>1.在init_work_by_lua阶段给每一个work进程设置回调函数，定期的请求相应的后端peer，如果连接失败或是成功则去跟新相应share_dict相应数据(当同一个server连接失败连接失败多次就会把其标记为down，当连续连接成功多少次后就把其标记为非down）</li>
+</ul>
+
+<h1>
+<a id="使用技巧------" class="anchor" href="#%E4%BD%BF%E7%94%A8%E6%8A%80%E5%B7%A7------" aria-hidden="true"><span class="octicon octicon-link"></span></a>使用技巧：      </h1>
+
+<ul>
+<li>1.利用share_dict的add函数对于同一个key只可以增加一次的机制，来实现了一个简单的锁,如下：<br>
+</li>
+</ul>
+
+<pre><code>
+local function get_lock(ctx)
+    local dict = ctx.dict
+    local key = "l:" .. ctx.upstream
+
+    -- the lock is held for the whole interval to prevent multiple
+    -- worker processes from sending the test request simultaneously.
+    -- here we substract the lock expiration time by 1ms to prevent
+    -- a race condition with the next timer event.     
+　  -- 利用其过期机制　相当于设置了一个自动过期的锁         
+    local ok, err = dict:add(key, true, ctx.interval - 0.001)
+    if not ok then
+        if err == "exists" then
+            return nil 
+        end
+        errlog("failed to add key \"", key, "\": ", err)
+        return nil 
+    end 
+    return true
+end
+</code></pre>
+
+<h1>
+<a id="下面有几个关键问题" class="anchor" href="#%E4%B8%8B%E9%9D%A2%E6%9C%89%E5%87%A0%E4%B8%AA%E5%85%B3%E9%94%AE%E9%97%AE%E9%A2%98" aria-hidden="true"><span class="octicon octicon-link"></span></a>下面有几个关键问题：</h1>
+
+<p>１.如何保证每一个work子进程只执行一次相应的修改?  　　　　　     </p>
+
+<ul>
+<li>使用了一个版本控制变量version默认为０，为一个upstream设置一个版本控制变量的key，然后value值为其版本数，每次定时回调的时候判断其当前版本是否低于上次版本，是则进行相应的同步。</li>
+</ul>
+
+<p>2.如何知道哪一个peer进行了相应的修改?  </p>
+
+<ul>
+<li> 一旦发现了有新的版本则采用轮训判断每一个id对应的peer。进行相应的key值进行获取。</li>
+</ul>
+
+<h2>
+<a id="有问题反馈" class="anchor" href="#%E6%9C%89%E9%97%AE%E9%A2%98%E5%8F%8D%E9%A6%88" aria-hidden="true"><span class="octicon octicon-link"></span></a>有问题反馈</h2>
+
+<p>在使用中有任何问题，欢迎反馈给我，可以用以下联系方式跟我交流</p>
+
+<ul>
+<li>邮件(1031379296#qq.com, 把#换成@)</li>
+<li>QQ: 1031379296</li>
+<li>weibo: <a href="http://weibo.com/u/2786211992/home">@王发康</a>
+</li>
+</ul>
+
+<h2>
+<a id="感激" class="anchor" href="#%E6%84%9F%E6%BF%80" aria-hidden="true"><span class="octicon octicon-link"></span></a>感激</h2>
+
+<h3>
+<a id="chunshengsteratgmailcom" class="anchor" href="#chunshengsteratgmailcom" aria-hidden="true"><span class="octicon octicon-link"></span></a>chunshengsterATgmail.com</h3>
+
+<h2>
+<a id="关于作者" class="anchor" href="#%E5%85%B3%E4%BA%8E%E4%BD%9C%E8%80%85" aria-hidden="true"><span class="octicon octicon-link"></span></a>关于作者</h2>
+
+<h3>
+<a id="linuxnginxgolangcc爱好者" class="anchor" href="#linuxnginxgolangcc%E7%88%B1%E5%A5%BD%E8%80%85" aria-hidden="true"><span class="octicon octicon-link"></span></a>Linux\nginx\golang\c\c++爱好者</h3>
+
+<h3>
+<a id="欢迎一起交流--一起学习" class="anchor" href="#%E6%AC%A2%E8%BF%8E%E4%B8%80%E8%B5%B7%E4%BA%A4%E6%B5%81--%E4%B8%80%E8%B5%B7%E5%AD%A6%E4%B9%A0" aria-hidden="true"><span class="octicon octicon-link"></span></a>欢迎一起交流  一起学习#</h3>
+      </section>
+      <footer>
+        <p><small>Hosted on <a href="https://pages.github.com">GitHub Pages</a> using the Dinky theme</small></p>
+      </footer>
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+		
+  </body>
+</html>
