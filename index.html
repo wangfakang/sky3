@@ -30,7 +30,7 @@
 
       </header>
       <section>
-        <p><code>对NGX_HTTP_UPSTREAM_DYNAMIC_MODULE的分析：
+        <p><code>对NGX_HTTP_UPSTREAM_CHECK_MODULE的分析：
 </code></p>
 
 <h1>
@@ -40,10 +40,16 @@
 <a id="一配置说明" class="anchor" href="#%E4%B8%80%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E" aria-hidden="true"><span class="octicon octicon-link"></span></a>一：配置说明</h2>
 
 <h2>
-<a id="二代码解析" class="anchor" href="#%E4%BA%8C%E4%BB%A3%E7%A0%81%E8%A7%A3%E6%9E%90" aria-hidden="true"><span class="octicon octicon-link"></span></a>二：代码解析</h2>
+<a id="二细节注意点" class="anchor" href="#%E4%BA%8C%E7%BB%86%E8%8A%82%E6%B3%A8%E6%84%8F%E7%82%B9" aria-hidden="true"><span class="octicon octicon-link"></span></a>二：细节注意点</h2>
 
 <h2>
-<a id="三总结注意点" class="anchor" href="#%E4%B8%89%E6%80%BB%E7%BB%93%E6%B3%A8%E6%84%8F%E7%82%B9" aria-hidden="true"><span class="octicon octicon-link"></span></a>三：总结注意点</h2>
+<a id="三基本原理" class="anchor" href="#%E4%B8%89%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86" aria-hidden="true"><span class="octicon octicon-link"></span></a>三：基本原理</h2>
+
+<h2>
+<a id="四使用技巧" class="anchor" href="#%E5%9B%9B%E4%BD%BF%E7%94%A8%E6%8A%80%E5%B7%A7" aria-hidden="true"><span class="octicon octicon-link"></span></a>四：使用技巧</h2>
+
+<h2>
+<a id="五关键问题" class="anchor" href="#%E4%BA%94%E5%85%B3%E9%94%AE%E9%97%AE%E9%A2%98" aria-hidden="true"><span class="octicon octicon-link"></span></a>五：关键问题</h2>
 
 <h3>
 <a id="一配置说明-1" class="anchor" href="#%E4%B8%80%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E-1" aria-hidden="true"><span class="octicon octicon-link"></span></a>一：配置说明</h3>
@@ -119,7 +125,7 @@
 </code></pre>
 
 <h1>
-<a id="细节注意点-" class="anchor" href="#%E7%BB%86%E8%8A%82%E6%B3%A8%E6%84%8F%E7%82%B9-" aria-hidden="true"><span class="octicon octicon-link"></span></a>细节注意点： </h1>
+<a id="二细节注意点-" class="anchor" href="#%E4%BA%8C%E7%BB%86%E8%8A%82%E6%B3%A8%E6%84%8F%E7%82%B9-" aria-hidden="true"><span class="octicon octicon-link"></span></a>二.细节注意点： </h1>
 
 <ul>
 <li>1.使用nxg_http_lua_upstream_module模块的set_peer_down进行修改的时候，只是对当前work进程生效，但是对于其他的work进程是没有作用的。
@@ -128,14 +134,14 @@ agentzh解决方法：</li>
 </ul>
 
 <h1>
-<a id="基本原理--" class="anchor" href="#%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86--" aria-hidden="true"><span class="octicon octicon-link"></span></a>基本原理：  </h1>
+<a id="三基本原理--" class="anchor" href="#%E4%B8%89%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86--" aria-hidden="true"><span class="octicon octicon-link"></span></a>三.基本原理：  </h1>
 
 <ul>
 <li>1.在init_work_by_lua阶段给每一个work进程设置回调函数，定期的请求相应的后端peer，如果连接失败或是成功则去跟新相应share_dict相应数据(当同一个server连接失败连接失败多次就会把其标记为down，当连续连接成功多少次后就把其标记为非down）</li>
 </ul>
 
 <h1>
-<a id="使用技巧------" class="anchor" href="#%E4%BD%BF%E7%94%A8%E6%8A%80%E5%B7%A7------" aria-hidden="true"><span class="octicon octicon-link"></span></a>使用技巧：      </h1>
+<a id="四使用技巧------" class="anchor" href="#%E5%9B%9B%E4%BD%BF%E7%94%A8%E6%8A%80%E5%B7%A7------" aria-hidden="true"><span class="octicon octicon-link"></span></a>四.使用技巧：      </h1>
 
 <ul>
 <li>1.利用share_dict的add函数对于同一个key只可以增加一次的机制，来实现了一个简单的锁,如下：<br>
@@ -165,7 +171,7 @@ end
 </code></pre>
 
 <h1>
-<a id="下面有几个关键问题" class="anchor" href="#%E4%B8%8B%E9%9D%A2%E6%9C%89%E5%87%A0%E4%B8%AA%E5%85%B3%E9%94%AE%E9%97%AE%E9%A2%98" aria-hidden="true"><span class="octicon octicon-link"></span></a>下面有几个关键问题：</h1>
+<a id="五下面有几个关键问题" class="anchor" href="#%E4%BA%94%E4%B8%8B%E9%9D%A2%E6%9C%89%E5%87%A0%E4%B8%AA%E5%85%B3%E9%94%AE%E9%97%AE%E9%A2%98" aria-hidden="true"><span class="octicon octicon-link"></span></a>五.下面有几个关键问题：</h1>
 
 <p>１.如何保证每一个work子进程只执行一次相应的修改?  　　　　　     </p>
 
